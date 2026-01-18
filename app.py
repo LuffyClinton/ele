@@ -55,17 +55,51 @@ st.markdown("""
 # -----------------------------
 def fetch_open_meteo(lat: float, lon: float, hours: int = 168, tz: str = "Asia/Shanghai"):
     """从 Open-Meteo 获取真实天气/辐照数据（默认获取7天=168小时，覆盖完整的周中/周末周期）"""
-    end = datetime.utcnow() + timedelta(days=5) # 预测未来5天 + 过去2天
-    start = datetime.utcnow() - timedelta(days=2)
-    # Open-Meteo API 支持 forecast，这里调整为获取 forecast 数据
-    url = ("https://api.open-meteo.com/v1/forecast"
-           f"?latitude={lat}&longitude={lon}"
-           "&hourly=shortwave_radiation,temperature_2m"
-           f"&timezone={tz}"
-           "&past_days=2&forecast_days=5") # 明确指定过去和未来天数
-    r = requests.get(url, timeout=20)
-    r.raise_for_status()
-    data = r.json()
+    try:
+        end = datetime.utcnow() + timedelta(days=5) # 预测未来5天 + 过去2天
+        start = datetime.utcnow() - timedelta(days=2)
+        # Open-Meteo API 支持 forecast，这里调整为获取 forecast 数据
+        url = ("https://api.open-meteo.com/v1/forecast"
+               f"?latitude={lat}&longitude={lon}"
+               "&hourly=shortwave_radiation,temperature_2m"
+               f"&timezone={tz}"
+               "&past_days=2&forecast_days=5") # 明确指定过去和未来天数
+        r = requests.get(url, timeout=20)
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        # 如果API调用失败（如429限流），使用模拟数据兜底
+        st.warning(f"天气API繁忙 (Code {getattr(e.response, 'status_code', 'Unknown')})，已自动切换至历史平均气象模拟数据。")
+        # 生成模拟数据：基于杭州典型气候
+        dates = pd.date_range(start=datetime.now() - timedelta(days=2), periods=168, freq="H")
+        
+        # 模拟气温：日平均15度，日较差10度，最低温出现在凌晨4点
+        # t = hour + minute/60
+        hours_arr = dates.hour + dates.minute / 60.0
+        temp_sim = 15 + 5 * np.sin(2 * np.pi * (hours_arr - 9) / 24) + np.random.normal(0, 0.5, size=len(dates))
+        
+        # 模拟辐照：白天有值，正午最大，考虑云遮挡噪声
+        # 假设日出6点，日落18点
+        rad_sim = []
+        for h in hours_arr:
+            if 6 <= h <= 18:
+                # 正弦波模拟太阳高度角
+                peak = 800 # W/m2
+                val = peak * np.sin(np.pi * (h - 6) / 12)
+                # 加入云层随机遮挡系数 0.6~1.0
+                val *= np.random.uniform(0.6, 1.0)
+                rad_sim.append(max(0, val))
+            else:
+                rad_sim.append(0.0)
+                
+        data = {
+            "hourly": {
+                "time": dates,
+                "shortwave_radiation": rad_sim,
+                "temperature_2m": temp_sim
+            }
+        }
+        
     df = pd.DataFrame({
         "time": pd.to_datetime(data["hourly"]["time"]),
         "radiation": data["hourly"]["shortwave_radiation"],
@@ -1096,4 +1130,5 @@ if False:
             st.download_button("下载调度报表 CSV", csv2, file_name="dispatch_and_cost.csv", mime="text/csv")
 
 st.caption("© 虚拟电厂 · 真实数据驱动的电力调度与售电预测平台")
+
 
