@@ -374,7 +374,7 @@ def train_eval_model(f: pd.DataFrame):
     y_pred = model.predict(X_test)
     r2 = r2_score(y_test, y_pred)
     mape = mean_absolute_percentage_error(y_test, y_pred)
-    rmse = mean_squared_error(y_test, y_pred, squared=False)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
     return {"r2": r2, "mape": mape, "rmse": rmse, "y_test": y_test, "y_pred": y_pred, "model": model, "feat_cols": feat_cols}
 
 # -----------------------------
@@ -1096,3 +1096,4 @@ if False:
             st.download_button("下载调度报表 CSV", csv2, file_name="dispatch_and_cost.csv", mime="text/csv")
 
 st.caption("© 虚拟电厂 · 真实数据驱动的电力调度与售电预测平台")
+
